@@ -1,11 +1,32 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import os
 from io import BytesIO
 import tempfile
 from contextlib import contextmanager
 
 import torch
+
+
+class AverageMeter:
+    """Computes and stores the current and weighted average value."""
+    __slots__ = 'average', 'value', 'sum', 'count'
+
+    def __init__(self):
+        self.average = 0.
+        self.value = 0.
+        self.sum = 0.
+        self.count = 0
+
+    def update(self, value: float, n: int = 1) -> AverageMeter:
+        self.value = value
+        self.sum += value * n
+        self.count += n
+        self.average = self.sum / self.count
+        return self
+
 
 @contextmanager
 def temp_filenames(count, delete=True, **kwargs):
@@ -19,7 +40,7 @@ def temp_filenames(count, delete=True, **kwargs):
             for name in names:
                 os.unlink(name)
 
-                
+
 def ensure_dir(path: str) -> bool:
     """Ensure path exists.
 

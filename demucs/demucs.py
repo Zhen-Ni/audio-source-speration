@@ -162,9 +162,13 @@ class Demucs(torch.nn.Module):
                                          final_layer=final_layer))
             in_channels = out_channels
             out_channels *= growth
-        self.lstm = BLSTM(in_channels, lstm_layers)
+        if lstm_layers:
+            self.lstm = BLSTM(in_channels, lstm_layers)
+        else:
+            self.lstm = torch.nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Shape of x now: (batch_size, nchannels, time_points)
         saved = [x]
         for encoder in self.encoders:
             x = encoder(x)
@@ -174,11 +178,7 @@ class Demucs(torch.nn.Module):
             skip = saved.pop()
             x = decoder(x + skip, length=saved[-1].shape[-1])
         x = x.view(x.size(0), self.sources, self.channels, x.size(-1))
+        # Shape of x now: (batch_size, nsources (4), nchannels, time_points)
         return x
 
-
-if __name__ == '__main__':
-    encoder = Encoder(2, 4, 8, 4)
-    decoder = Decoder(4, 2, 8, 4, 3)
-    demucs = Demucs(4, 2, depth=6)
 

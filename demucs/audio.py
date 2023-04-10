@@ -210,7 +210,3 @@ def convert_audio_channels(wav: torch.Tensor,
             'The audio file has less channels than requested but is not mono.')
     return wav
 
-
-if __name__ == '__main__':
-    filename = 'test1.mp4'
-    f = AudioFile(filename)

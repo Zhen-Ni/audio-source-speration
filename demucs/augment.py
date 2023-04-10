@@ -82,7 +82,7 @@ class Remix(torch.nn.Module):
     Shuffle sources to make new mixes.
     """
 
-    def __init__(self, proba=1, group_size=4):
+    def __init__(self, proba=1, group_size=None):
         """Shuffle sources within one batch.  Each batch is divided into
         groups of size `group_size` and shuffling is done within each
         group separatly. This allow to keep the same probability

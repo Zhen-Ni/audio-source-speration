@@ -3,48 +3,21 @@
 from __future__ import annotations
 import sys
 import time
-import logging
 import pickle
 
 import tqdm
 import torch
 
 
-from utils import copy_to
+from .utils import copy_to, AverageMeter
+
+
+__all__ = 'AverageMeter', 'Trainer'
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BATCH_SIZE = 16
 WORKERS = 4
-
-
-def get_logger(name: str) -> logging.Logger:
-    logger = logging.getLogger(name)
-    handler = logging.StreamHandler()
-    # formatter = logging.Formatter('%(asctime)s %(message)s')
-    formatter = logging.Formatter('%(message)s')
-    handler.setFormatter(formatter)
-    logger.handlers = [handler]
-    logger.setLevel(logging.INFO)
-    return logger
-
-
-class AverageMeter:
-    """Computes and stores the current and weighted average value."""
-    __slots__ = 'average', 'value', 'sum', 'count'
-
-    def __init__(self):
-        self.average = 0.
-        self.value = 0.
-        self.sum = 0.
-        self.count = 0
-
-    def update(self, value: float, n: int = 1) -> AverageMeter:
-        self.value = value
-        self.sum += value * n
-        self.count += n
-        self.average = self.sum / self.count
-        return self
 
 
 class Trainer():
@@ -136,7 +109,7 @@ class Trainer():
         self.model.train()
         loss_meter = AverageMeter()
         tq = tqdm.tqdm(loader,
-                       desc=f"train",
+                       desc="train",
                        ncols=None,
                        leave=False,
                        file=sys.stdout,
@@ -183,7 +156,7 @@ class Trainer():
         self.model.eval()
         loss_meter = AverageMeter()
         tq = tqdm.tqdm(loader,
-                       desc=f"valid",
+                       desc="valid",
                        ncols=None,
                        leave=False,
                        file=sys.stdout,
@@ -192,7 +165,7 @@ class Trainer():
             current_batch_size = streams.size(0)
             streams = streams.to(self.device)
             sources = streams[:, 1:]
-            mix = torch.sum(sources, dim=1)
+            mix = streams[:, 0]
 
             with torch.no_grad():
                 estimates = self.model(mix)
@@ -206,20 +179,3 @@ class Trainer():
         if len(self.history['validate_loss']) < self.epoch:
             self.history['validate_loss'].append(loss_meter.average)
         return loss_meter
-
-
-if __name__ == '__main__':
-    from demucs import Demucs
-    from musdb import Audioset
-    from augment import FlipChannels, FlipSign
-    
-    testset = Audioset("../musdb18/test", samples=44100, stride=441000000//2)
-    augment = torch.nn.Sequential(FlipChannels(), FlipSign())
-
-    model = Demucs(4, 2, depth=2, initial_growth=8, lstm_layers=1)
-    optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
-    critrion = torch.nn.L1Loss()
-
-    trainer = Trainer(model, optimizer, critrion)
-    loss_meter = trainer.train(testset, augment, batch_size=1)
-    loss_meter2 = trainer.validate(testset, batch_size=1)

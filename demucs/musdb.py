@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from audio import AudioFile
+from .audio import AudioFile
 
 
 __all__ = 'Audioset',
@@ -68,13 +68,3 @@ class Audioset(torch.utils.data.Dataset):
     @property
     def filelist(self) -> list[AudioFile]:
         return self._filelist
-
-
-
-
-
-if __name__ == '__main__':
-    filename = '../musdb18/test'
-    musdb = Audioset(filename)
-    musdb2 = Audioset(filename, samples=441000)
-    musdb3 = Audioset(filename, samples=441000, stride=44100)
