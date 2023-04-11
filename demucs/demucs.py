@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 
 import torch
-
+from .utils import ceil
 
 __all__ = 'Demucs',
 
-
-def ceil(x: float) -> int:
-    y = int(x)
-    return y if x == y else y + 1
 
 
 class Encoder(torch.nn.Module):

@@ -5,6 +5,7 @@ import torch
 
 __all__ = 'Shift', 'FlipChannels', 'FlipSign', 'Scale', 'Remix'
 
+
 class Shift(torch.nn.Module):
     """
     Randomly shift audio in time by up to `shift` samples.

@@ -9,7 +9,7 @@ import tqdm
 import torch
 
 
-from .utils import copy_to, AverageMeter
+from .utils import copy_to, AverageMeter, apply_model
 
 
 __all__ = 'AverageMeter', 'Trainer'
@@ -18,6 +18,11 @@ __all__ = 'AverageMeter', 'Trainer'
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BATCH_SIZE = 16
 WORKERS = 4
+SAMPLERATE = 44100
+SEGMENT_FRAMES = SAMPLERATE * 0
+OVERLAP_FRAMES = SAMPLERATE * 0
+NSHIFTS = 10
+MAX_SHIFT = SAMPLERATE // 2
 
 
 class Trainer():
@@ -146,7 +151,10 @@ class Trainer():
     def validate(self,
                  dataset: torch.utils.data.Dataset,
                  batch_size: int = BATCH_SIZE,
-                 shuffle: bool = True,
+                 segment_frames: int = SEGMENT_FRAMES,
+                 overlap_frames: int = OVERLAP_FRAMES,
+                 nshifts: int = NSHIFTS,
+                 max_shift: int = MAX_SHIFT,
                  workers: int = WORKERS,
                  ) -> AverageMeter:
         t_start = time.time()
@@ -166,9 +174,9 @@ class Trainer():
             streams = streams.to(self.device)
             sources = streams[:, 1:]
             mix = streams[:, 0]
-
-            with torch.no_grad():
-                estimates = self.model(mix)
+            estimates = apply_model(self.model, mix,
+                                    segment_frames, overlap_frames,
+                                    nshifts, max_shift)
             loss = self.critrion(estimates, sources)
             loss_meter.update(loss.item(), current_batch_size)
             tq.set_postfix(loss=f"{loss_meter.value:.4f}")
