@@ -9,7 +9,7 @@ import tqdm
 import torch
 
 
-from .utils import copy_to, AverageMeter, apply_model
+from .utils import copy_to, AverageMeter, apply_model, free_memory
 
 
 __all__ = 'AverageMeter', 'Trainer'
@@ -17,7 +17,7 @@ __all__ = 'AverageMeter', 'Trainer'
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BATCH_SIZE = 16
-WORKERS = 4
+WORKERS = 2
 SAMPLERATE = 44100
 SEGMENT_FRAMES = SAMPLERATE * 0
 OVERLAP_FRAMES = SAMPLERATE * 0
@@ -38,6 +38,7 @@ class Trainer():
                  filename: str | None = None,
                  milestones: list[int] = [100, 150],
                  gamma: float = 0.1,
+                 forced_gc: bool = False
                  ):
         self.model = model
         self.optimizer = optimizer
@@ -50,6 +51,7 @@ class Trainer():
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
             self.optimizer, gamma=gamma, milestones=milestones,
             last_epoch=self.epoch-1)
+        self.is_forced_gc = forced_gc
         self.history: dict[str, list[float]] = {'train_loss': [],
                                                 'validate_loss': [],
                                                 }
@@ -110,7 +112,8 @@ class Trainer():
         loader = torch.utils.data.DataLoader(dataset,
                                              batch_size=batch_size,
                                              shuffle=shuffle,
-                                             num_workers=workers)
+                                             num_workers=workers,
+                                             drop_last=True)
         self.model.train()
         loss_meter = AverageMeter()
         tq = tqdm.tqdm(loader,
@@ -118,11 +121,8 @@ class Trainer():
                        ncols=None,
                        leave=False,
                        file=sys.stdout,
-                       unit=" batch")
+                       unit="batch")
         for streams in tq:
-            if len(streams) < batch_size:
-                # Skip incomplete batch for augment.Remix to work properly
-                continue
             streams = streams.to(self.device)
             sources = streams[:, 1:]
             if augment is not None:
@@ -138,6 +138,15 @@ class Trainer():
 
             loss_meter.update(loss.item(), batch_size)
             tq.set_postfix(loss=f"{loss_meter.value:.4f}")
+
+            del streams, sources, mix, estimates, loss
+            # Free some space before next round.  It significantly
+            # reduces average memory consumption (eg. from 15G to 7G),
+            # but not very useful, as it does not reduce the memory
+            # usage peak, but leads to fluctuation in memory usage as
+            # observed in google Colab.
+            if self.is_forced_gc:
+                free_memory()
 
         print(f'train result: '
               f'avg loss = {loss_meter.average:.4f}, '
@@ -168,7 +177,7 @@ class Trainer():
                        ncols=None,
                        leave=False,
                        file=sys.stdout,
-                       unit=" batch")
+                       unit="batch")
         for streams in tq:
             current_batch_size = streams.size(0)
             streams = streams.to(self.device)
@@ -180,6 +189,11 @@ class Trainer():
             loss = self.critrion(estimates, sources)
             loss_meter.update(loss.item(), current_batch_size)
             tq.set_postfix(loss=f"{loss_meter.value:.4f}")
+
+            del streams, sources, mix, estimates, loss
+            if self.is_forced_gc:
+                free_memory()
+
         print(f'valid result: '
               f'avg loss = {loss_meter.average:.4f}, '
               f'wall time = {time.time()- t_start:.2f}s')

@@ -3,8 +3,8 @@
 
 import torch
 
-from demucs import Demucs, Audioset, Trainer, Tester
-from demucs.augment import Shift, FlipChannels, FlipSign, Scale, Remix
+from deepwave import Demucs, MusdbSet, Trainer, Tester
+from deepwave.augment import Shift, FlipChannels, FlipSign, Scale, Remix
 
 
 if __name__ == '__main__':
@@ -28,10 +28,10 @@ if __name__ == '__main__':
 
     print('Start loading data.')
 
-    trainset = Audioset("../musdb18/train/train",
+    trainset = MusdbSet("../musdb18raw/train/train",
                         samples=sample_rate * 11, stride=sample_rate)
-    validset = Audioset("../musdb18/train/valid")
-    testset = Audioset("../musdb18/test")
+    validset = MusdbSet("../musdb18raw/train/valid")
+    testset = MusdbSet("../musdb18raw/test")
 
     print('Data loaded.\n')
     print('Start training process.')
@@ -49,6 +49,7 @@ if __name__ == '__main__':
         best_loss = None
         print('New trainer generated.')
     print(f'current/total epochs [{trainer.epoch}/{epochs}]')
+    print('trainer device:', trainer.device)
     while trainer.epoch < epochs:
         trainer.train(trainset, augment, batch_size=train_batch_size)
         trainer.validate(validset, batch_size=eval_batch_size,
@@ -79,6 +80,7 @@ if __name__ == '__main__':
                         nshifts=eval_nshifts,
                         max_shift=eval_max_shift)
         print('New tester generated.')
+    print('tester device:', tester.device)
     meters = tester.evaluate(model, testset)
 
     print('Test process finished.')

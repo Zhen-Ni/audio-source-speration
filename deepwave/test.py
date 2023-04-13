@@ -3,8 +3,8 @@
 from __future__ import annotations
 import time
 import pickle
-
 from concurrent import futures
+import typing
 
 import tqdm
 # Require mir_eval to perform signal-to-distortion ratio (SDR) calculation
@@ -12,7 +12,7 @@ from mir_eval import separation
 import numpy as np
 import torch
 
-from .utils import copy_to, apply_model
+from .utils import copy_to, apply_model, free_memory
 
 __all__ = 'Tester',
 
@@ -51,7 +51,9 @@ class Tester:
                  overlap_frames: int = OVERLAP_FRAMES,
                  nshifts: int = NSHIFTS,
                  max_shift: int = MAX_SHIFT,
-                 filename: str | None = None):
+                 filename: str | None = None,
+                 forced_gc: bool = False
+                 ):
         # Use property setter to move model and loss function to target device
         self.device = DEVICE if device is None else device
         self.index = start_index
@@ -60,6 +62,7 @@ class Tester:
         self.nshifts = nshifts
         self.max_shift = max_shift
         self.filename = 'tester.tester' if filename is None else filename
+        self.is_forced_gc = forced_gc
         self.history: dict[str, list[float]] = {'drums': [],
                                                 'bass': [],
                                                 'other': [],
@@ -75,7 +78,7 @@ class Tester:
         return self
 
     def save(self, device: torch.device | int | str = "cpu"):
-        data = copy_to(self.__dict__, torch.device(device))        
+        data = copy_to(self.__dict__, torch.device(device))
         with open(self.filename, 'wb') as f:
             f.write(pickle.dumps((self, self.device)))
 
@@ -119,8 +122,10 @@ class Tester:
 
         tq = tqdm.trange(len(subset),
                          desc='test',
+                         ncols=None,
+                         leave=False,
                          initial=self.index,
-                         total=len(subset),
+                         total=len(dataset),
                          unit='track'
                          )
         tqit = iter(tq)
@@ -140,6 +145,10 @@ class Tester:
                     p = pool.submit(bss_eval_sources, sources[j], estimates[j])
                     pendings.append(p)
 
+                del streams, sources, mix, estimates
+                if self.is_forced_gc:
+                    free_memory()
+
                 # Procced to next outermost loop only when:
                 # 1. no finished futures can be fetched (results must
                 #    be fetched in sequence);
@@ -147,23 +156,35 @@ class Tester:
                 #    workers
                 while True:
                     if pendings and pendings[0].done():
-                        sdrs = pendings.pop(0).result()
-                        self.index += 1
-                        self.history['drums'].append(sdrs[0])
-                        self.history['bass'].append(sdrs[1])
-                        self.history['other'].append(sdrs[2])
-                        self.history['vocals'].append(sdrs[3])
-                        if save:
-                            self.save()
-                        tq.set_postfix(sdr=f'{np.mean(sdrs):.4f}')
-                        next(tqit)
+                        self._evaluate_gather_result(pendings.pop(0),
+                                                     save, tq, tqit)
                     elif 2 * workers <= len(pendings):
                         time.sleep(0.1)
                     else:
                         break
+
+            for p in pendings:
+                self._evaluate_gather_result(p, save, tq, tqit)
 
         avgsdr = self.average_SDR()
         print(f'test result: '
               f'avg sdr = {avgsdr:.4f}, '
               f'wall time = {time.time()- t_start:.2f}s')
         return avgsdr
+
+    def _evaluate_gather_result(self,
+                                p: futures.Future,
+                                save: bool,
+                                tq: tqdm.tqdm,
+                                tqit: typing.Iterator[tqdm.tqdm]
+                                ):
+        sdrs = p.result()
+        self.index += 1
+        self.history['drums'].append(sdrs[0])
+        self.history['bass'].append(sdrs[1])
+        self.history['other'].append(sdrs[2])
+        self.history['vocals'].append(sdrs[3])
+        if save:
+            self.save()
+        tq.set_postfix(sdr=f'{np.mean(sdrs):.4f}')
+        next(tqit)

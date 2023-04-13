@@ -19,6 +19,8 @@ class Shift(torch.nn.Module):
     def forward(self, wav: torch.Tensor) -> torch.Tensor:
         batch, sources, channels, time = wav.size()
         length = time - self.shift
+        if length <= 0:
+            raise ValueError('shift length should be smaller than wav length')
         if self.shift > 0:
             if not self.training:
                 wav = wav[..., :length]

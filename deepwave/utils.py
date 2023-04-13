@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import os
+import gc
 from io import BytesIO
 import tempfile
 from contextlib import contextmanager
 
 import torch
 from torchaudio.transforms import Fade
+
+
+def free_memory():
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 def ceil(x: float) -> int:
@@ -53,15 +59,15 @@ def ensure_dir(path: str) -> bool:
     If path does not exist, try creating it. Return True if path
     exists, return False if path can not be created.
     """
+    if os.path.exists(path):
+        if os.path.isdir(path):
+            return True
+        return False
     parent, current = os.path.split(path)
     if parent and not ensure_dir(parent):
         return False
     if not current:
         raise ValueError('empty path')
-    if os.path.exists(path):
-        if os.path.isdir(path):
-            return True
-        return False
     os.mkdir(path)
     return True
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
 import torch
 from .utils import ceil
 
@@ -21,7 +22,7 @@ class Encoder(torch.nn.Module):
         self.conv = torch.nn.Conv1d(in_channels, out_channels,
                                     kernel_size=kernel_size,
                                     stride=stride)
-        self.relu = torch.nn.ReLU()
+        self.relu = torch.nn.ReLU(inplace=True)
         self.conv2 = torch.nn.Conv1d(out_channels, out_channels * 2,
                                      kernel_size=1, stride=1)
         self.glu = torch.nn.GLU(dim=1)    # split input on dim 1 (channels)
@@ -63,7 +64,7 @@ class Decoder(torch.nn.Module):
                                               kernel_size=kernel_size,
                                               stride=stride)
         if not self.is_final_layer:
-            self.relu = torch.nn.ReLU()
+            self.relu = torch.nn.ReLU(inplace=True)
 
     def forward(self, x: torch.Tensor,
                 length: int | None = None) -> torch.Tensor:
@@ -91,6 +92,8 @@ class BLSTM(torch.nn.Module):
         self.linear = torch.nn.Linear(input_size * 2, input_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Call flatten_parameters() before each lstm call to save gpu memory.
+        self.lstm.flatten_parameters()
         # Shape of x now: (batch_size, nchannels, time_points)
         x = x.permute(2, 0, 1)
         # Shape of x now: (time_points, batch_size, nchannels)
