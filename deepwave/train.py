@@ -139,12 +139,12 @@ class Trainer():
             loss_meter.update(loss.item(), batch_size)
             tq.set_postfix(loss=f"{loss_meter.value:.4f}")
 
+            # Free some space before next round.
             del streams, sources, mix, estimates, loss
-            # Free some space before next round.  It significantly
-            # reduces average memory consumption (eg. from 15G to 7G),
-            # but not very useful, as it does not reduce the memory
-            # usage peak, but leads to fluctuation in memory usage as
-            # observed in google Colab.
+            # free_memory() significantly reduces average memory
+            # consumption (eg. from 15G to 7G), and may also reduces
+            # the peak usage of gpu memory as observed in google Colab.
+            # (Which the model runs out of gpu memory without this operation)
             if self.is_forced_gc:
                 free_memory()
 
