@@ -99,6 +99,8 @@ def apply_model(model: torch.nn.Module,
 
     Parameters
     ----------
+    mix: torch.Tensor
+        Tensor of the mixed music. Shape of mix is: [batch, channel, length].
     segment_frames: int
         Segment length.
     overlap_frames: int

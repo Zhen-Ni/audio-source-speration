@@ -3,7 +3,7 @@
 
 import torch
 
-from deepwave import Demucs, MusdbSet, Trainer, Tester
+from deepwave import Demucs, MusdbSet, Trainer, Tester, Separator
 from deepwave.augment import Shift, FlipChannels, FlipSign, Scale, Remix
 
 
@@ -17,7 +17,7 @@ if __name__ == '__main__':
     eval_overlap_frames = sample_rate * 1
     eval_nshifts = 10
     eval_max_shift = sample_rate // 2
-    
+
     model_name = 'demucs.th'
     augment = torch.nn.Sequential(
         Shift(sample_rate),
@@ -76,7 +76,7 @@ if __name__ == '__main__':
         print("Use stored tester, continue testing.")
     except FileNotFoundError:
         tester = Tester(segment_frames=eval_segment_frames,
-                        overlap_frames=eval_segment_frames,
+                        overlap_frames=eval_overlap_frames,
                         nshifts=eval_nshifts,
                         max_shift=eval_max_shift)
         print('New tester generated.')
@@ -84,3 +84,14 @@ if __name__ == '__main__':
     meters = tester.evaluate(model, testset)
 
     print('Test process finished.')
+    print('Separate sample song.')
+
+    with open(model_name, 'rb') as f:
+        model = torch.load(f, "cpu")
+    separator = Separator(segment_frames=eval_segment_frames,
+                          overlap_frames=eval_overlap_frames,
+                          nshifts=eval_nshifts,
+                          max_shift=eval_max_shift)
+    separator.separate_file(model, '去有风的地方.wav', overwrite=True)
+
+    print('Separate sample song finished.\n')

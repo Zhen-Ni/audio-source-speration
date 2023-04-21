@@ -14,20 +14,22 @@ import torch
 
 from .utils import ensure_dir
 
-__all__ = ('FFMPEG_BIN', 'FFPROBE_BIN', 'AudioFile',
-           'CompressedAudio', 'RawAudio', 'convert_compressed_to_raw',
-           'audiofile', 'build_raw')
+__all__ = ('FFMPEG_BIN', 'FFPROBE_BIN',
+           'ffmpeg_read_stream', 'ffmpeg_write_stream', 'ffprobe_read_info',
+           'AudioFile', 'CompressedAudio', 'RawAudio',
+           'convert_compressed_to_raw', 'audiofile', 'build_raw',
+           )
 
 FFMPEG_BIN = 'ffmpeg'
 FFPROBE_BIN = 'ffprobe'
 
 
-def _ffmpeg_read_stream(path_or_stream: str | typing.IO[bytes],
-                        seek_time: float | None = None,
-                        query_duration: float | None = None,
-                        samplerate: int | None = None,
-                        map_streams: list[int] | int | None = None
-                        ) -> npt.NDArray:
+def ffmpeg_read_stream(path_or_stream: str | typing.IO[bytes],
+                       seek_time: float | None = None,
+                       query_duration: float | None = None,
+                       samplerate: int | None = None,
+                       map_streams: list[int] | int | None = None
+                       ) -> npt.NDArray:
     "Read stream and convert it to raw int16_t bytes."
     is_file = isinstance(path_or_stream, str)
     command = [FFMPEG_BIN]
@@ -61,7 +63,7 @@ def _ffmpeg_read_stream(path_or_stream: str | typing.IO[bytes],
     return np.frombuffer(out, dtype=np.float32)
 
 
-def _ffprobe_read_info(path_or_stream: str | typing.IO[bytes]) -> list:
+def ffprobe_read_info(path_or_stream: str | typing.IO[bytes]) -> list:
     "Get media info and returns it in json format."
     if isinstance(path_or_stream, str):
         stdout_data = sp.check_output([
@@ -76,6 +78,33 @@ def _ffprobe_read_info(path_or_stream: str | typing.IO[bytes]) -> list:
             '-print_format', 'json', '-show_format', '-show_streams'
         ], input=path_or_stream.read())
     return json.loads(stdout_data.decode('utf-8'))
+
+
+def ffmpeg_write_stream(wav: npt.NDArray,
+                        path: str,
+                        samplerate: int,
+                        overwrite: bool = False,
+                        ):
+    "Read stream and convert it to raw int16_t bytes."
+    if not overwrite and os.path.exists(path):
+        raise FileExistsError(f'file {path} exists, '
+                              'checking path or setting overwrite to True')
+    channels = wav.shape[-2]
+    wav = wav.T
+    command = [FFMPEG_BIN]
+    command += ['-loglevel', 'panic']
+    if overwrite:
+        command += '-y',
+    command += '-ar', str(samplerate)
+    command += '-ac', str(channels)
+    # use raw 32-bit sound input, see ffmpeg -formats
+    command += ['-f', 'f32le']
+    command += ['-i', '-']           # Input will arrive from pipe
+    command += [path]
+
+    with sp.Popen(command, stdin=sp.PIPE) as p:
+        out, err = p.communicate(wav.astype(np.float32).tobytes())
+    return out, err
 
 
 def convert_audio_channels(wav: torch.Tensor,
@@ -119,11 +148,11 @@ class AudioFile(ABC):
     @abstractmethod
     def samplerate(self) -> int:
         ...
-        
+
     @abstractmethod
     def frames(self) -> int:
         ...
-        
+
     @abstractmethod
     def read(self,
              offset: int | None = None,
@@ -141,7 +170,7 @@ class CompressedAudio(AudioFile):
                  samplerate: int | None = None):
         # Cached value.
         self._info = None
-        
+
         self._path_or_buffer = path_or_buffer
         self._streams: list[int]
         self.select_stremas(streams)
@@ -174,7 +203,7 @@ class CompressedAudio(AudioFile):
     @property
     def source_info(self):
         if self._info is None:
-            self._info = _ffprobe_read_info(self._path_or_buffer)
+            self._info = ffprobe_read_info(self._path_or_buffer)
         return self._info
 
     @property
@@ -267,9 +296,9 @@ class CompressedAudio(AudioFile):
         for i, stream in enumerate(self._streams):
             seek_time = None if offset is None else offset / samplerate
             duration = None if samples is None else samples / samplerate
-            wav_array = _ffmpeg_read_stream(self._path_or_buffer, seek_time,
-                                            duration, samplerate,
-                                            self._audio_streams[stream])
+            wav_array = ffmpeg_read_stream(self._path_or_buffer, seek_time,
+                                           duration, samplerate,
+                                           self._audio_streams[stream])
             wav = torch.tensor(wav_array)
             wav = wav.view(-1, self.source_channels(stream)).t()
             if channels is not None:
@@ -327,7 +356,7 @@ class RawAudio(AudioFile):
 
     def samplerate(self) -> int:
         return self._samplerate
-    
+
     def read(self,
              offset: int | None = None,
              samples: int | None = None,
@@ -405,4 +434,3 @@ def build_raw(source: str, destination: str, workers: int = None):
     if workers:
         p.shutdown()
     return
-    
