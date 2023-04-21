@@ -142,8 +142,8 @@ class Tester:
                                         self.overlap_frames,
                                         self.nshifts,
                                         self.max_shift)
-                sources.cpu()
-                estimates.cpu()
+                sources = sources.cpu()
+                estimates = estimates.cpu()
                 for j in range(current_batch_size):
                     p = pool.submit(bss_eval_sources, sources[j], estimates[j])
                     pendings.append(p)
